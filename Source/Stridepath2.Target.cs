@@ -10,6 +10,6 @@ public class Stridepath2Target : TargetRules
 		Type = TargetType.Game;
 		DefaultBuildSettings = BuildSettingsVersion.V5;
 		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_6;
-		ExtraModuleNames.Add("Stridepath2");
+		ExtraModuleNames.Add("Stridepath");
 	}
 }

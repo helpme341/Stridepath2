@@ -1,0 +1,25 @@
+{
+	"FileVersion": 2,
+	"Version": 0,
+	"VersionName": "0.4",
+	"FriendlyName": "MAS",
+	"Category": "Other",
+	"IsBetaVersion": true,
+	"Modules": [
+		{
+			"Name": "MAS",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+    "Plugins": [
+        {
+          "Name": "DAS",
+          "Enabled": true
+        },
+        {
+          "Name": "Zeon",
+          "Enabled": true
+        }
+    ]
+}

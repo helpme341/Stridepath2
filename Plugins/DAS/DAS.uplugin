@@ -1,0 +1,45 @@
+{
+	"FileVersion": 3,
+	"Version": 0,
+	"VersionName": "0.4.2",
+	"FriendlyName": "DAS",
+	"Description": "",
+	"Category": "Other",
+	"CreatedBy": "",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "DAS",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"	
+		},
+        {
+          "Name": "DASEditor",
+          "Type": "Editor",
+          "LoadingPhase": "Default"
+        }
+	],
+	"Plugins": [
+		{
+			"Name": "Zeon",
+			"Enabled": true
+		},
+        { 
+            "Name": "Touch",
+            "Enabled": true,
+            "Optional": true
+        },
+        {
+            "Name": "Roto",
+            "Enabled": true,
+            "Optional": true
+        }
+	]
+} 

@@ -1,0 +1,39 @@
+{
+    "FileVersion": 3,
+    "Version": 0,
+    "VersionName": "0.3.7.0",
+    "FriendlyName": "Zeon",
+    "Name": "Zeon",
+    "Description": "",
+    "Category": "Other",
+    "CreatedBy": "Help Me",
+    "CreatedByURL": "",
+    "DocsURL": "",
+    "MarketplaceURL": "",
+    "SupportURL": "",
+    "EngineVersion": "5.6.0",
+    "CanContainContent": true,
+    "Modules": [
+        {
+          "Name": "Zeon",
+          "Type": "Runtime",
+          "LoadingPhase": "Default"
+        },
+        {
+          "Name": "ZeonEditor",
+          "Type": "Editor",
+          "LoadingPhase": "Default"
+        },
+        {
+          "Name": "TickerSystem",
+          "Type": "Runtime",
+          "LoadingPhase": "Default"
+        }
+    ],
+    "Plugins": [
+        {
+          "Name": "EnhancedInput",
+          "Enabled": true
+        }
+    ]
+}
