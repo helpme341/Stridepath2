@@ -1,16 +1,11 @@
 {
 	"FileVersion": 3,
 	"EngineAssociation": "5.6",
-    "VersionName": "0.0.1",
+    "VersionName": "0.0.2",
 	"Category": "",
 	"Description": "",
     "IsBetaVersion": true,
 	"Modules": [
-        {
-          "Name": "Evora",
-          "Type": "Runtime",
-          "LoadingPhase": "Default"
-        },
 		{
 			"Name": "Stridepath",
 			"Type": "Runtime",

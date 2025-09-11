@@ -1,11 +1,11 @@
 
-#include "Core/StridepathCharacter.h"
+#include "Player/StridepathCharacter.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "Core/CharacterInputSettings.h"
-#include "Core/CharacterInteractSettings.h"
+#include "Player/Settings/CharacterInputSettings.h"
+#include "Player/Settings/CharacterInteractSettings.h"
 #include "Evora/Public/ParkourMovementAbilitySystem.h"
 #include "Interfaces/Interact.h"
 #include "Utility/TraceUtility.h"
@@ -14,17 +14,24 @@ DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 AStridepathCharacter::AStridepathCharacter()
 {
+	// Base SetUp:
+	bUseControllerRotationYaw = true;
+	bUseControllerRotationPitch = false;
+	bUseControllerRotationRoll = false;
+
 	// Create a CapsuleComponent	
 	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>("CapsuleComponent");
-	RootComponent = CapsuleComponent;
 	CapsuleComponent->InitCapsuleSize(55.f, 96.0f);
+	CapsuleComponent->SetCollisionProfileName(TEXT("Pawn")); // Важно иначе игрок будеть проваливатся
+	RootComponent = CapsuleComponent;
 		
-	// Create a CameraComponent	
+	// Create a CameraComponent		
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>("FirstPersonCamera");
 	CameraComponent->SetupAttachment(RootComponent);
 	CameraComponent->SetRelativeLocation(FVector(-10.f, 0.f, 60.f));
 	CameraComponent->bUsePawnControlRotation = true;
 
+	// Create a MovementComponent		
 	ParkourMovementAbilitySystem = CreateDefaultSubobject<UParkourMovementAbilitySystem>("ParkourMovementAbilitySystem");
 }
 
@@ -47,18 +54,18 @@ void AStridepathCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// Jumped
-		EnhancedInputComponent->BindAction(InputSettings->JumpAction, ETriggerEvent::Started, this, &AStridepathCharacter::Jump);
+		EnhancedInputComponent->BindAction(InputSettings->JumpAction.Get(), ETriggerEvent::Started, this, &AStridepathCharacter::Jump);
 
 		// Moving
-		EnhancedInputComponent->BindAction(InputSettings->MoveAction, ETriggerEvent::Triggered, this, &AStridepathCharacter::Move);
+		EnhancedInputComponent->BindAction(InputSettings->MoveAction.Get(), ETriggerEvent::Triggered, this, &AStridepathCharacter::Move);
 
 		// Looking
-		EnhancedInputComponent->BindAction(InputSettings->LookAction, ETriggerEvent::Triggered, this, &AStridepathCharacter::Look);
+		EnhancedInputComponent->BindAction(InputSettings->LookAction.Get(), ETriggerEvent::Triggered, this, &AStridepathCharacter::Look);
 
 		// Interact
-		EnhancedInputComponent->BindAction(InputSettings->InteractAction, ETriggerEvent::Started, this, &AStridepathCharacter::Interact);
-		EnhancedInputComponent->BindAction(InputSettings->InteractAction, ETriggerEvent::Triggered, this, &AStridepathCharacter::Interact);
-		EnhancedInputComponent->BindAction(InputSettings->InteractAction, ETriggerEvent::Completed, this, &AStridepathCharacter::Interact);
+		EnhancedInputComponent->BindAction(InputSettings->InteractAction.Get(), ETriggerEvent::Started, this, &AStridepathCharacter::Interact);
+		EnhancedInputComponent->BindAction(InputSettings->InteractAction.Get(), ETriggerEvent::Triggered, this, &AStridepathCharacter::Interact);
+		EnhancedInputComponent->BindAction(InputSettings->InteractAction.Get(), ETriggerEvent::Completed, this, &AStridepathCharacter::Interact);
 	}
 	else
 	{

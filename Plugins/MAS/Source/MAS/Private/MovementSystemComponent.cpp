@@ -1,10 +1,21 @@
 ﻿
 #include "MovementSystemComponent.h"
 
+#include "Utility/TraceUtility.h"
+
 UMovementSystemComponent::UMovementSystemComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+}
+
+void UMovementSystemComponent::BeginPlay()
+{
+	Super::BeginPlay();
 	DynamicSet = DefaultSet;
+	
+	check(GetOwner())
+	SetUpdatedComponent(GetOwner()->GetRootComponent());
+	CapsuleComp = Cast<UCapsuleComponent>(UpdatedComponent);
 }
 
 void UMovementSystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -21,34 +32,58 @@ void UMovementSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	ApplyGravity(DeltaTime);
 	
 	MoveWithCollisions(DeltaTime);
-	SetOwnerCompVelocity();
+	UpdatedComponent->ComponentVelocity = DynamicSet.Velocity;
 }
 
-void UMovementSystemComponent::SetOwnerCompVelocity()
+bool UMovementSystemComponent::PredictiveGround(FHitResult& OutHit, const float DeltaTime) const
 {
-	if (UpdatedComponent)
-	{
-		const auto CurrentVelocity = DynamicSet.Velocity * DynamicSet.PlaneConstraintNormal;
-		DynamicSet.Velocity = CurrentVelocity;
-		UpdatedComponent->ComponentVelocity = CurrentVelocity;
-	}
-}
+	const FVector H = FVector(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
+	float HSpeed = H.Size();
+	if (HSpeed <= KINDA_SMALL_NUMBER) return false;
 
-void UMovementSystemComponent::SetIsOnGround(const bool bInIsOnGround)
-{
-	bIsOnGround = bInIsOnGround;
+	const FVector Dir = H / HSpeed;
+	const float Ahead = FMath::Clamp(HSpeed * DeltaTime * 1.5f, 6.f, DynamicSet.MaxPredictAhead);
+
+	const FVector Start = UpdatedComponent->GetComponentLocation() + Dir * Ahead;
+	const FVector End   = Start + FVector(0,0, -(DynamicSet.GroundProbeLength + 6.f));
+
+	if (!SweepSingleByChannel(OutHit, Start, End) || !IsWalkable(OutHit.Normal)) return false;
+
+	const float ComputeSnapDistance = DynamicSet.BaseSnapDistance + FMath::Clamp(HSpeed * DeltaTime * 1.5f, 0.f, 30.f);
+	return OutHit.Distance <= ComputeSnapDistance + 2.f; // допускаем небольшой зазор, растущий со скоростью/Δt
 }
 
 void UMovementSystemComponent::PrePhysics_UpdateGroundState()
 {
-	SetIsOnGround(SweepForGround(GroundHit));
+	const float DT = GetWorld()->GetDeltaSeconds();
+	SweepForGround(GroundHit); // Длинный зонд оставляем для проекции ввода по уклону
+	
+	FHitResult ContactHit; // Контакт
+	const bool bContact = ShortGroundContact(ContactHit);
 
-	// Если стоим на поверхности и заходили в неё по Z — обнуляем вертикальную «просадку»
-	if (bIsOnGround && DynamicSet.Velocity.Z < 0.f)
-	{
-		// Небольшой «прилип» к земле вместо отрицательного Z
-		DynamicSet.Velocity.Z = FMath::Max(DynamicSet.Velocity.Z, -2.f); // Небольшой «прилип» к земле вместо отрицательного Z
-	}
+	FHitResult PredHit; 
+	const bool bPredict = PredictiveGround(PredHit, DT); // Предиктивная опора впереди
+
+	if (bContact) DynamicSet.TimeSinceLostGround = 0.f; // Койот-тайм
+	else          DynamicSet.TimeSinceLostGround += DT;
+	const bool bGrace = DynamicSet.TimeSinceLostGround <= DynamicSet.GroundGraceTime && DynamicSet.Velocity.Z <= 150.f;
+
+	bIsOnGround = bContact || bPredict || bGrace;
+
+	// Нормаль для проекции ввода — контактная приоритетнее, потом предиктивная
+	if      (bContact) GroundHit = ContactHit;
+	else if (bPredict) GroundHit = PredHit;
+
+	// Прижим по Z — ТОЛЬКО при реальном контакте
+	if (bIsOnGround && DynamicSet.Velocity.Z < 0.f) DynamicSet.Velocity.Z = FMath::Max(DynamicSet.Velocity.Z, DynamicSet.StickVelocityZ);
+}
+
+bool UMovementSystemComponent::ShortGroundContact(FHitResult& OutHit) const
+{
+	const FVector Start = UpdatedComponent->GetComponentLocation();
+	const FVector End   = Start + FVector(0,0,-(DynamicSet.GroundContactTolerance + 0.5f));
+	
+	return SweepSingleByChannel(OutHit, Start, End) && IsWalkable(OutHit.Normal);
 }
 
 void UMovementSystemComponent::ApplyInputAcceleration(const float DeltaTime)
@@ -61,8 +96,7 @@ void UMovementSystemComponent::ApplyInputAcceleration(const float DeltaTime)
 		const float TargetAccel = bGround ? DynamicSet.GroundAcceleration : DynamicSet.AirAcceleration;
 		const float MaxSpeed = bGround ? DynamicSet.MaxGroundSpeed : DynamicSet.MaxAirSpeed;
 
-		// Проекция на плоскость земли (движение по склонам)
-		FVector DesiredDir = InputDir;
+		FVector DesiredDir = InputDir; 	// Проекция на плоскость земли (движение по склонам)
 		if (bGround && GroundHit.IsValidBlockingHit())
 		{
 			const FVector Normal = GroundHit.Normal;
@@ -86,7 +120,7 @@ void UMovementSystemComponent::ApplyInputAcceleration(const float DeltaTime)
 	}
 }
 
-void UMovementSystemComponent::ApplyFrictionAndBraking(float DeltaTime)
+void UMovementSystemComponent::ApplyFrictionAndBraking(const float DeltaTime)
 {
 	if (!bIsOnGround) return;
 
@@ -114,61 +148,62 @@ void UMovementSystemComponent::ApplyFrictionAndBraking(float DeltaTime)
 
 void UMovementSystemComponent::ApplyGravity(const float DeltaTime)
 {
-	// Прямая гравитация; если на земле — минимальный «прилип» уже установлен в PrePhysics
-	DynamicSet.Velocity.Z += DynamicSet.GravityZ * DeltaTime;
+	// Прямая гравитация
+	DynamicSet.Velocity.Z += DynamicSet.GravityZ * -1000.f * DeltaTime; // умножение тут на -1000.f нужно, что бы было удобно настаивать не по 1000 а по 1 2 3….
 }
 
 void UMovementSystemComponent::MoveWithCollisions(const float DeltaTime)
 {
-	const FVector Delta = DynamicSet.Velocity * DeltaTime;
+    const FVector Delta = DynamicSet.Velocity * DeltaTime;
 
-	FHitResult Hit;
-	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentRotation(), true, Hit);
+    FHitResult Hit;
+    SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentRotation(), true, Hit);
 
-	if (Hit.IsValidBlockingHit())
-	{
-		// Слайдимся по поверхности
-		SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit);
+    if (Hit.IsValidBlockingHit())
+    {
+        SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit);
 
-		// Если лбом в вертикальную стену — обнуляем соответствующую проекцию горизонтали
-		if (Hit.Normal.Z < 0.2f)	
-		{
-			const FVector HVel = FVector(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
-			const FVector HSlide = FVector::VectorPlaneProject(HVel, Hit.Normal);
-			DynamicSet.Velocity.X = HSlide.X;
-			DynamicSet.Velocity.Y = HSlide.Y;
-		}
+        // Вертикальная стена → проекция горизонтальной скорости
+        if (Hit.Normal.Z < 0.2f)
+        {
+            const FVector HVel   = FVector(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
+            const FVector HSlide = FVector::VectorPlaneProject(HVel, Hit.Normal);
+            DynamicSet.Velocity.X = HSlide.X;
+            DynamicSet.Velocity.Y = HSlide.Y;
+        }
 
-		// Ступеньки/бордюры — упрощённо: если удар снизу, обнуляем отрицательный Z
-		if (DynamicSet.Velocity.Z < 0.f && Hit.Normal.Z > 0.2f) DynamicSet.Velocity.Z = 0.f;
-	}
+        // Удар о поверхность снизу — гасим отрицательный Z
+        if (DynamicSet.Velocity.Z < 0.f && Hit.Normal.Z > 0.2f) DynamicSet.Velocity.Z = 0.f;
+    }
+}
 
-	// После движения — перепроверяем «землю» (могли слететь с уступа)
-    SetIsOnGround(SweepForGround(GroundHit));
+bool UMovementSystemComponent::SweepSingleByChannel(FHitResult& OutHit, const FVector& Start, const FVector& End) const 
+{
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(PredictGround), false, GetOwner());
+	const FCollisionShape Shape(FCollisionShape::MakeCapsule(GetCapsuleRadius(CapsuleComp.Get()), GetCapsuleHalfHeight(CapsuleComp.Get())));
+	
+	const bool bHit = GetWorld()->SweepSingleByChannel(OutHit, Start, End, FQuat::Identity, ECC_WorldStatic, Shape, Params);
+	FTraceUtility::DrawDebugSweep(GetWorld(), Start, End, Shape, bHit);
+	return bHit;
+}
+
+bool UMovementSystemComponent::IsWalkable(const FVector& Normal) const
+{
+	const float CosWalkable = FMath::Cos(FMath::DegreesToRadians(DynamicSet.MaxSlopeAngleDeg));
+	return FVector::DotProduct(Normal, FVector::UpVector) >= CosWalkable;
 }
 
 bool UMovementSystemComponent::SweepForGround(FHitResult& OutHit) const
 {
-	auto CapsuleComponent = Cast<UCapsuleComponent>(UpdatedComponent);
-	
-	const float Radius = GetCapsuleRadius(CapsuleComponent);
-	const float HalfHeight = GetCapsuleHalfHeight(CapsuleComponent);
-
 	const FVector Start = UpdatedComponent->GetComponentLocation();
-	const float ProbeDown = DynamicSet.GroundProbeLength;
-	const FVector End = Start + FVector(0,0, -ProbeDown);
+	const float Speed     = DynamicSet.Velocity.Size();
+	const float Ahead     = FMath::Clamp(Speed * GetWorld()->GetDeltaSeconds() * 1.5f, 0.f, 120.f);
+	constexpr float StepSlack = 6.f;
+	const float ProbeDown = DynamicSet.GroundProbeLength + Ahead + StepSlack;
 
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(SweepForGround), false, GetOwner());
-	FCollisionResponseParams Response;
-	FCollisionShape Shape;
+	const FVector End = Start + FVector(0, 0, -ProbeDown);
+	if (!SweepSingleByChannel(OutHit, Start, End)) return false;
 
-	// Пытаемся свипать капсулой, если рут — капсула; иначе сферой.
-	if (CapsuleComponent) Shape = FCollisionShape::MakeCapsule(Radius, HalfHeight);
-	else Shape = FCollisionShape::MakeSphere(FMath::Max(10.f, Radius));
-
-	if (!GetWorld()->SweepSingleByChannel(OutHit, Start, End, FQuat::Identity, ECC_Visibility, Shape, Params, Response)) return false;
-
-	// Проверяем проходимость по уклону
 	const float SlopeDeg = FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(OutHit.Normal, FVector::UpVector)));
 	return SlopeDeg <= DynamicSet.MaxSlopeAngleDeg;
 }

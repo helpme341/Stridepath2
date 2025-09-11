@@ -31,7 +31,7 @@ class STRIDEPATH_API AStridepathCharacter : public APawn
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	TObjectPtr<UCharacterInputSettings> InputSettings;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Interact, meta=(AllowPrivateAccess = "true"))
 	TObjectPtr<UCharacterInteractSettings> InteractSettings;
 	
 	void Move(const FInputActionValue& Value);

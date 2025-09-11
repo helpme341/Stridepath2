@@ -23,6 +23,7 @@ public class MAS : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+				"Zeon"
 			}
 			);
 	}

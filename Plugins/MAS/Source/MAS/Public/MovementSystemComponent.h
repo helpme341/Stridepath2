@@ -23,7 +23,10 @@ class MAS_API UMovementSystemComponent : public UPawnMovementComponent
 	}
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
+	virtual void BeginPlay() override;
+	
+	UPROPERTY()
+	TObjectPtr<UCapsuleComponent> CapsuleComp;
 public:
 
 	UFUNCTION(BlueprintCallable, Category="Movement")
@@ -39,19 +42,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FMovementSettingsSet DefaultSet;
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditInstanceOnly, BlueprintReadWrite)
 	FMovementSettingsSet DynamicSet;
 
-	void SetOwnerCompVelocity();
-	void SetIsOnGround(const bool bInIsOnGround);
-
 	void PrePhysics_UpdateGroundState();
-	void ApplyInputAcceleration(float DeltaTime);
-	void ApplyFrictionAndBraking(float DeltaTime);
-	void ApplyGravity(float DeltaTime);
-	void MoveWithCollisions(float DeltaTime);
-	
+	void ApplyInputAcceleration(const float DeltaTime);
+	void ApplyFrictionAndBraking(const float DeltaTime);
+	void ApplyGravity(const float DeltaTime);
+	void MoveWithCollisions(const float DeltaTime);
+
+	bool PredictiveGround(FHitResult& OutHit, const float DeltaTime) const;
+	bool SweepSingleByChannel(FHitResult& OutHit, const FVector& Start, const FVector& End) const;
+	bool ShortGroundContact(FHitResult& OutHit) const;
 	bool SweepForGround(FHitResult& OutHit) const;
+	
+	bool IsWalkable(const FVector& Normal) const;
+	
 	FORCEINLINE static float GetCapsuleRadius(const UCapsuleComponent* CapsuleComponent)
 	{
 		if (CapsuleComponent) return CapsuleComponent->GetScaledCapsuleRadius();

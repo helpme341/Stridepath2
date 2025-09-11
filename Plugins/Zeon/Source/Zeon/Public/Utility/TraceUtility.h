@@ -38,6 +38,70 @@ public:
 		return false;
 	}
 
+	static void DrawDebugSweep(const UWorld* World, const FVector& Start, const FVector& End, const FCollisionShape& Shape,
+		const bool bHit, const float Duration = 2.f,const int32 Segments = 16)
+	{
+		check(World)
+		if (!bShowDebug) return;
+
+	    const FColor Color = bHit ? FColor::Green : FColor::Red;
+	    const FVector Delta = End - Start;
+	    const float Distance = Delta.Size();
+	    const FVector Dir = Distance > KINDA_SMALL_NUMBER ? (Delta / Distance) : FVector::UpVector;
+	    const FQuat Orient = FRotationMatrix::MakeFromZ(Dir).ToQuat();
+
+	    DrawDebugLine(World, Start, End, Color, /*bPersistentLines*/ false, Duration, /*DepthPriority*/0, /*Thickness*/ 1.5f);
+
+	    if (Shape.IsSphere())
+	    {
+	        const float R = Shape.GetSphereRadius();
+
+	        // Сферы в начале и в конце
+	        DrawDebugSphere(World, Start, R, Segments, Color, false, Duration);
+	        DrawDebugSphere(World, End,   R, Segments, Color, false, Duration);
+
+	        // «Растянутая» капсула эквивалентна сферическому свипу
+	        const float Half = Distance * 0.5f;
+	        const FVector Mid = (Start + End) * 0.5f;
+	        DrawDebugCapsule(World, Mid, Half, R, Orient, Color, false, Duration);
+	    }
+	    else if (Shape.IsCapsule())
+	    {
+	        float HalfHeight = Shape.GetCapsuleHalfHeight();
+	        const float Radius = Shape.GetCapsuleRadius();
+
+	        // Капсулы в начале и конце
+	        DrawDebugCapsule(World, Start, HalfHeight, Radius, Orient, Color, false, Duration);
+	        DrawDebugCapsule(World, End,   HalfHeight, Radius, Orient, Color, false, Duration);
+
+	        // «Растянутая» капсула: добавляем половину дистанции к halfHeight
+	        const float SweptHalf = HalfHeight + Distance * 0.5f;
+	        const FVector Mid = (Start + End) * 0.5f;
+	        DrawDebugCapsule(World, Mid, SweptHalf, Radius, Orient, Color, false, Duration);
+	    }
+	    else if (Shape.IsBox())
+	    {
+	        const FVector Ext = Shape.GetBox();
+	        const FQuat NoRot = FQuat::Identity;
+
+	        // Боксы в начале и в конце
+	        DrawDebugBox(World, Start, Ext, NoRot, Color, false, Duration);
+	        DrawDebugBox(World, End,   Ext, NoRot, Color, false, Duration);
+
+	        // Вершины локального бокса
+	        const FVector V[8] = {
+	            {+Ext.X, +Ext.Y, +Ext.Z}, {+Ext.X, +Ext.Y, -Ext.Z},
+	            {+Ext.X, -Ext.Y, +Ext.Z}, {+Ext.X, -Ext.Y, -Ext.Z},
+	            {-Ext.X, +Ext.Y, +Ext.Z}, {-Ext.X, +Ext.Y, -Ext.Z},
+	            {-Ext.X, -Ext.Y, +Ext.Z}, {-Ext.X, -Ext.Y, -Ext.Z}
+	        };
+	        for (int i = 0; i < 8; ++i) DrawDebugLine(World, Start + V[i], End + V[i], Color.WithAlpha(150), false, Duration, 0, 0.5f);
+
+	        // Стрелка направления для ясности
+	        DrawDebugDirectionalArrow(World, Start, End, 20.f, Color, false, Duration, 0, 1.5f);
+	    }
+	}
+
 
 	static bool bShowDebug; 
 };

@@ -1,0 +1,32 @@
+{
+    "FileVersion": 3,
+    "Version": 0,
+    "VersionName": "0.0.2",
+    "FriendlyName": "Evora",
+    "Name": "Evora",
+    "CreatedBy": "Help Me",
+    "EngineVersion": "5.6.0",
+    "IsBetaVersion": true,
+    "CanContainContent": false,
+	"Modules": [
+		{
+			"Name": "Evora",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+    "Plugins": [
+        {
+            "Name": "Zeon",
+            "Enabled": true
+        },
+        {
+          "Name": "DAS",
+          "Enabled": true
+        },
+        {
+          "Name": "MAS",
+          "Enabled": true
+        }
+  ]
+}
