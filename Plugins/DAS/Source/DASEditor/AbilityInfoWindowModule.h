@@ -28,7 +28,7 @@ protected:
 	}
 	FORCEINLINE virtual bool UpdateWindowInformation(float DeltaTime) override
 	{
-		if (AbilitySystem.IsValid())
+		if (AbilitySystem.IsValid() && AbilitiesInfoBox.IsValid() && OwnedTagsBox.IsValid())
 		{
 			UpdateOwnedTags();
 			UpdateAbilitiesInfo();	
