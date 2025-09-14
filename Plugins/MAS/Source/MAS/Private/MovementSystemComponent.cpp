@@ -1,6 +1,7 @@
 ﻿
 #include "MovementSystemComponent.h"
 
+#include "Settings/MovementSystemSettings.h"
 #include "Utility/TraceUtility.h"
 
 UMovementSystemComponent::UMovementSystemComponent()
@@ -11,7 +12,8 @@ UMovementSystemComponent::UMovementSystemComponent()
 void UMovementSystemComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	DynamicSet = DefaultSet;
+	check(MovementSettings)
+	DynamicSet = MovementSettings->DefaultSettings;
 	
 	check(GetOwner())
 	SetUpdatedComponent(GetOwner()->GetRootComponent());
@@ -88,32 +90,29 @@ bool UMovementSystemComponent::ShortGroundContact(FHitResult& OutHit) const
 
 void UMovementSystemComponent::ApplyInputAcceleration(const float DeltaTime)
 {
-	if (const FVector Input = ConsumeInputVector(); !Input.IsNearlyZero())
+	if (LastInputDir = ConsumeInputVector(); !LastInputDir.IsNearlyZero())
 	{
-		const FVector InputDir = Input.GetSafeNormal();
 		const bool bGround = bIsOnGround;
-
+		const float MaxSpeed  = bGround ? DynamicSet.MaxGroundSpeed : DynamicSet.MaxAirSpeed;
 		const float TargetAccel = bGround ? DynamicSet.GroundAcceleration : DynamicSet.AirAcceleration;
-		const float MaxSpeed = bGround ? DynamicSet.MaxGroundSpeed : DynamicSet.MaxAirSpeed;
+	
+		FVector InputDir = LastInputDir.GetSafeNormal();
+		if (bGround && GroundHit.IsValidBlockingHit()) InputDir = FVector::VectorPlaneProject(InputDir, GroundHit.Normal).GetSafeNormal();
 
-		FVector DesiredDir = InputDir; 	// Проекция на плоскость земли (движение по склонам)
-		if (bGround && GroundHit.IsValidBlockingHit())
+		FVector NewH = FVector(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
+		const float SpeedFrac = FMath::Clamp(NewH.Size() / MaxSpeed, 0.f, 1.f);
+		const float AccelScale = DynamicSet.GroundAccelerationCurve->GetFloatValue(SpeedFrac);
+
+		// 5) Применить ускорение
+		const FVector Accel = InputDir * TargetAccel * AccelScale;
+		DynamicSet.Velocity += Accel * DeltaTime;
+
+		// 6) Кламп горизонтальной составляющей под MaxSpeed
+		NewH = FVector(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
+		const float   NewHSpeed = NewH.Size();
+		if (NewHSpeed > MaxSpeed && NewHSpeed > KINDA_SMALL_NUMBER)
 		{
-			const FVector Normal = GroundHit.Normal;
-			DesiredDir = FVector::VectorPlaneProject(InputDir, Normal).GetSafeNormal();
-		}
-
-		// Ускорение
-		DynamicSet.Velocity += DesiredDir * TargetAccel * DeltaTime;
-
-		// Ограничение горизонтальной скорости
-		const FVector Horizontal = FVector(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
-		const float HSpeed = Horizontal.Size();
-		const float HMax = MaxSpeed;
-
-		if (HSpeed > HMax && HSpeed > KINDA_SMALL_NUMBER)
-		{
-			const FVector ClampedH = Horizontal * (HMax / HSpeed);
+			const FVector ClampedH = NewH * (MaxSpeed / NewHSpeed);
 			DynamicSet.Velocity.X = ClampedH.X;
 			DynamicSet.Velocity.Y = ClampedH.Y;
 		}
@@ -122,20 +121,91 @@ void UMovementSystemComponent::ApplyInputAcceleration(const float DeltaTime)
 
 void UMovementSystemComponent::ApplyFrictionAndBraking(const float DeltaTime)
 {
+    if (!bIsOnGround) return;
+
+    // Горизонтальная скорость
+    FVector H(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
+    float Speed = H.Size();
+    if (Speed <= KINDA_SMALL_NUMBER) return;
+
+    // Есть ли ввод (используй тот же InputDir, что и в ApplyInputAcceleration)
+    // Сохрани последний нормализованный InputDir где-то в компоненте при обработке ввода.
+    const bool bHasInput = !LastInputDir.IsNearlyZero();
+
+    if (!bHasInput)
+    {
+        // Тормозим к нулю БЕЗ капа в присутствии ввода
+        const float Drop = DynamicSet.BrakingDeceleration * DeltaTime;
+        const float NewSpeed = FMath::Max(Speed - Drop, 0.f);
+
+        if (NewSpeed <= DynamicSet.StopSpeedEpsilon)
+        {
+            H = FVector::ZeroVector;
+        }
+        else
+        {
+            H *= (NewSpeed / Speed);
+        }
+    }
+    else
+    {
+        // Разложим скорость на вдоль/поперёк желаемого направления
+        const FVector Dir = LastInputDir; // уже нормализованный (и спроецированный по склону раньше)
+        const float   AlongMag = FVector::DotProduct(H, Dir);
+        const FVector Along    = Dir * AlongMag;
+        const FVector Side     = H - Along;
+
+        // НЕ трогаем составляющую вдоль ввода (чтобы не было терминальной скорости от трения)
+        // Лёгкий дамп только боковой части — убирает «занос»
+        const float SideSpeed = Side.Size();
+        if (SideSpeed > KINDA_SMALL_NUMBER)
+        {
+            const float SideDrop   = DynamicSet.LateralFriction * DeltaTime;
+            const float NewSideMag = FMath::Max(SideSpeed - SideDrop, 0.f);
+            const FVector NewSide  = Side * (NewSideMag / SideSpeed);
+            H = Along + NewSide;
+        }
+
+        // Если игрок давит, но текущая скорость горизонтально идёт ПРОТИВ ввода — разрешим тормозить «встречную»
+        if (AlongMag < 0.f)
+        {
+            const float DropOpp = DynamicSet.BrakingDeceleration * DeltaTime;
+            const float NewSpeed = FMath::Max(H.Size() - DropOpp, 0.f);
+            if (NewSpeed > KINDA_SMALL_NUMBER)
+            {
+                H *= (NewSpeed / H.Size());
+            }
+            else
+            {
+                H = FVector::ZeroVector;
+            }
+        }
+    }
+
+    // Анти-дрожь около нуля
+    if (H.SizeSquared() <= FMath::Square(DynamicSet.StopSpeedEpsilon))
+    {
+        H = FVector::ZeroVector;
+    }
+
+    DynamicSet.Velocity.X = H.X;
+    DynamicSet.Velocity.Y = H.Y;
+}
+
+/*
+
+void UMovementSystemComponent::ApplyFrictionAndBraking(const float DeltaTime)
+{
 	if (!bIsOnGround) return;
 
 	// Горизонтальная часть
 	FVector H = FVector(DynamicSet.Velocity.X, DynamicSet.Velocity.Y, 0.f);
 
-	// Если нет входа (после ConsumeInputVector) — тормозим и трёмся
-	const float Friction = DynamicSet.GroundFriction;
-	const float Braking  = DynamicSet.BrakingDeceleration;
-
 	const float Speed = H.Size();
 	if (Speed <= KINDA_SMALL_NUMBER) return;
 
 	// Эквивалент CharacterMovement: dV ~ (Friction*Speed + Braking) * dt
-	const float Drop = (Friction * Speed + Braking) * DeltaTime;
+	const float Drop = (DynamicSet.GroundFriction * Speed + DynamicSet.BrakingDeceleration) * DeltaTime;
 	const float NewSpeed = FMath::Max(Speed - Drop, 0.f);
 	
 	if (NewSpeed != Speed)
@@ -146,10 +216,12 @@ void UMovementSystemComponent::ApplyFrictionAndBraking(const float DeltaTime)
 	}
 }
 
+*/
+
 void UMovementSystemComponent::ApplyGravity(const float DeltaTime)
 {
 	// Прямая гравитация
-	DynamicSet.Velocity.Z += DynamicSet.GravityZ * -1000.f * DeltaTime; // умножение тут на -1000.f нужно, что бы было удобно настаивать не по 1000 а по 1 2 3….
+	DynamicSet.Velocity.Z += DynamicSet.GravityZ * -750.f * DeltaTime;
 }
 
 void UMovementSystemComponent::MoveWithCollisions(const float DeltaTime)

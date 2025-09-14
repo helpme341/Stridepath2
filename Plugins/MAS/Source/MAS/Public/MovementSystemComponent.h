@@ -2,12 +2,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MovementSettingsSet.h"
+#include "Utility/Invoker.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PawnMovementComponent.h"
-#include "Utility/Invoker.h"
+#include "Settings/MovementSettingsSet.h"
 #include "MovementSystemComponent.generated.h"
 
+
+class UMovementSystemSettings;
 
 UCLASS(Blueprintable, BlueprintType, ClassGroup=(MAS), meta=(BlueprintSpawnableComponent))
 class MAS_API UMovementSystemComponent : public UPawnMovementComponent
@@ -16,7 +18,7 @@ class MAS_API UMovementSystemComponent : public UPawnMovementComponent
 
 	friend class UMovementAbilitySystem;
 	friend class UMovementAbility;
-
+	
 	virtual bool ShouldSkipUpdate(float DeltaTime) const override
 	{
 		return Super::ShouldSkipUpdate(DeltaTime);
@@ -39,10 +41,10 @@ public:
 protected:
 	UMovementSystemComponent();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FMovementSettingsSet DefaultSet;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Movement)
+	TObjectPtr<UMovementSystemSettings> MovementSettings;
 	
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite)
+	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category=Movement)
 	FMovementSettingsSet DynamicSet;
 
 	void PrePhysics_UpdateGroundState();
@@ -69,6 +71,7 @@ protected:
 		return 88.f;
 	}
 
+	FVector LastInputDir;
 	FHitResult GroundHit;
 	bool bIsOnGround = true;
 	TInvoker<void()> ApplyMovementEdits;

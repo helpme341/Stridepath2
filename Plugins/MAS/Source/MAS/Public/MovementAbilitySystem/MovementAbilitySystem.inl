@@ -3,6 +3,7 @@
 
 #include "MovementAbilitySystem.h"
 #include "MovementAbility/MovementAbility.h"
+#include "Settings/MovementSystemSettings.h"
 
 template <EMovementSettingsType Key, typename T>
 bool UMovementAbilitySystem::SetMovementSetting(const UMovementAbility* Ability, uint8 Priority, const T& Value)
@@ -21,7 +22,7 @@ bool UMovementAbilitySystem::SetMovementSettingToDefault(const UMovementAbility*
 	if (!IsAbilityHasAccessToSetting(Ability->GetClass(), Key)) return false;
 	DelayedMovementEdits.Add(Key, TPair(Priority, [this]
 	{
-		MovementSystemComponent->DynamicSet.GetValue<Key>() = MovementSystemComponent->DefaultSet.GetValue<Key>();
+		MovementSystemComponent->DynamicSet.GetValue<Key>() = MovementSystemComponent->MovementSettings->DefaultSettings.GetValue<Key>();
 	}));
 	return true;
 }
@@ -29,7 +30,7 @@ bool UMovementAbilitySystem::SetMovementSettingToDefault(const UMovementAbility*
 template <EMovementSettingsType Key, typename T>
 const T& UMovementAbilitySystem::GetMovementSetting(const bool bDefaultSetting) const
 {
-	if (bDefaultSetting) return MovementSystemComponent->DefaultSet.GetValue<Key>();
+	if (bDefaultSetting) return MovementSystemComponent->MovementSettings->DefaultSettings.GetValue<Key>();
 	return MovementSystemComponent->DynamicSet.GetValue<Key>();
 }
 
