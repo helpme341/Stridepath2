@@ -19,5 +19,5 @@ class ZEON_API IInteract
 
 public:
 
-	virtual void Interact(const FGameplayTag& InteractType, ETriggerEvent TriggerEvent, APawn* Player) = 0;
+	virtual void Interact(const FGameplayTag& InteractType, const ETriggerEvent TriggerEvent, APawn* Player) = 0;
 };
