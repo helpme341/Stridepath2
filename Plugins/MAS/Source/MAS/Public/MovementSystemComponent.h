@@ -53,6 +53,7 @@ protected:
 	void ApplyGravity(const float DeltaTime);
 	void MoveWithCollisions(const float DeltaTime);
 
+	bool TryStepUp(const FHitResult& BlockingHit, const FVector& HDelta, const float MaxStepHeight);
 	bool PredictiveGround(FHitResult& OutHit, const float DeltaTime) const;
 	bool SweepSingleByChannel(FHitResult& OutHit, const FVector& Start, const FVector& End) const;
 	bool ShortGroundContact(FHitResult& OutHit) const;
